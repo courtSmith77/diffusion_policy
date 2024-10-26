@@ -1,0 +1,19 @@
+### MUST CHANGE - COPIED FROM KYLE 
+
+name: conversion_test
+
+data_dir: data/
+output_file: converted
+image_shape: [3, 110, 70]
+
+# DON'T NEED
+# if have other easily changed parameters, put here
+# # Data folders to include, inclusive. In this example,
+# # all folders, 1-16, will be included
+# data:
+#   - start: 1
+#     end: 5
+#   - start: 6
+#     end: 13 
+
+# decimation_factor: 1 # Decimation factor for the data
