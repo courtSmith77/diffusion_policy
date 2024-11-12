@@ -52,6 +52,7 @@ def main(checkpoint, output_dir, device):
     
     # dump log to json
     json_log = dict()
+    print(runner_log.items())
     for key, value in runner_log.items():
         if isinstance(value, wandb.sdk.data_types.video.Video):
             json_log[key] = value._path

@@ -1,19 +1,22 @@
-
 defaults:
   - _self_
   - data_conversion: data_conversion
 
-name: franka_pusht_image
+name: franka_pusht_multi_image
 
-dataset_path: ../data/converted_low_freq.zarr
+dataset_path: ../data/converted_overfit_multi_img_10hz.zarr
 
 # Shapes must match the data conversion config file
-image_shape: &image_shape ${task.data_conversion.image_shape}
+scene_image_shape: &scene_image_shape ${task.data_conversion.scene_image_shape}
+ee_image_shape: &ee_image_shape ${task.data_conversion.ee_image_shape}
 shape_meta: &shape_meta
   # acceptable types: rgb, low_dim
   obs:
-    img:
-      shape: *image_shape
+    scene_img:
+      shape: *scene_image_shape
+      type: rgb
+    ee_img:
+      shape: *ee_image_shape
       type: rgb
     agent_pos:
       shape: [2]
@@ -25,7 +28,7 @@ env_runner:
   _target_: diffusion_policy.env_runner.franka_pusht_image_runner.FrankaPushTImageRunner
 
 dataset:
-  _target_: diffusion_policy.dataset.franka_pusht_image_dataset.FrankaPushTDataset
+  _target_: diffusion_policy.dataset.franka_pusht_multi_image_dataset.FrankaPushTDataset
   zarr_path: ${task.dataset_path}
   horizon: ${horizon}
   pad_before: ${eval:'${n_obs_steps}-1+${n_latency_steps}'}

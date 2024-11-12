@@ -30,7 +30,7 @@ class FrankaPushTDataset(BaseImageDataset):
         super().__init__()
         # TODO: add observations must add zarr key
         self.replay_buffer = ReplayBuffer.copy_from_path(
-            zarr_path, keys=['img', 'agent_pos', 'action'])
+            zarr_path, keys=['scene_img', 'ee_img', 'agent_pos', 'action'])
 
         val_mask = get_val_mask(
             n_episodes=self.replay_buffer.n_episodes,
@@ -73,7 +73,8 @@ class FrankaPushTDataset(BaseImageDataset):
         }
         normalizer = LinearNormalizer()
         normalizer.fit(data=data, last_n_dims=1, mode=mode, **kwargs)
-        normalizer['img'] = get_image_range_normalizer()
+        normalizer['scene_img'] = get_image_range_normalizer()
+        normalizer['ee_img'] = get_image_range_normalizer()
         return normalizer
 
     def __len__(self) -> int:
@@ -81,13 +82,15 @@ class FrankaPushTDataset(BaseImageDataset):
 
     def _sample_to_data(self, sample):
         # TODO: If add obs, grab from sample dictionary
-        image = np.moveaxis(sample['img'], -1, 1)/255
+        scene_image = np.moveaxis(sample['scene_img'], -1, 1)/255
+        ee_image = np.moveaxis(sample['ee_img'], -1, 1)/255
         agent_pos = sample['agent_pos'].astype(np.float)
 
         # TODO: Add or remove observations
         data = {
             'obs': {
-                'img': image,  # T, 3, 230, 230
+                'scene_img': scene_image,  # T, 3, 230, 230
+                'ee_img': ee_image,
                 'agent_pos': agent_pos
             },
             'action': sample['action'].astype(np.float32)  # T, 2

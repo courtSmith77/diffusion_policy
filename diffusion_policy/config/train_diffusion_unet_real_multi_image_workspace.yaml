@@ -1,8 +1,8 @@
 defaults:
   - _self_
-  - task: lift_image_abs
+  - task: franka_pusht_multi_image
 
-name: train_diffusion_unet_image
+name: train_diffusion_unet_multi_image
 _target_: diffusion_policy.workspace.train_diffusion_unet_image_workspace.TrainDiffusionUnetImageWorkspace
 
 task_name: ${task.name}
@@ -24,13 +24,16 @@ policy:
   shape_meta: ${shape_meta}
   
   noise_scheduler:
-    _target_: diffusers.schedulers.scheduling_ddpm.DDPMScheduler
+    _target_: diffusers.schedulers.scheduling_ddim.DDIMScheduler
     num_train_timesteps: 100
     beta_start: 0.0001
     beta_end: 0.02
+    # beta_schedule is important
+    # this is the best we found
     beta_schedule: squaredcos_cap_v2
-    variance_type: fixed_small # Yilun's paper uses fixed_small_log instead, but easy to cause Nan
-    clip_sample: True # required when predict_epsilon=False
+    clip_sample: True
+    set_alpha_to_one: True
+    steps_offset: 0
     prediction_type: epsilon # or sample
 
   obs_encoder:
@@ -41,8 +44,7 @@ policy:
       name: resnet18
       weights: null
     resize_shape: null
-    # crop_shape: [76, 76]
-    # constant center crop
+    # crop_shape: [216, 288] # ch, cw 240x320 90%
     # random_crop: True
     use_group_norm: True
     share_rgb_model: False
@@ -73,17 +75,17 @@ ema:
 
 dataloader:
   batch_size: 64
-  num_workers: 4
+  num_workers: 8
   shuffle: True
   pin_memory: True
-  persistent_workers: False
+  persistent_workers: True
 
 val_dataloader:
   batch_size: 64
-  num_workers: 4
+  num_workers: 8
   shuffle: False
   pin_memory: True
-  persistent_workers: False
+  persistent_workers: True
 
 optimizer:
   _target_: torch.optim.AdamW
@@ -100,7 +102,7 @@ training:
   # optimization
   lr_scheduler: cosine
   lr_warmup_steps: 500
-  num_epochs: 500
+  num_epochs: 600
   gradient_accumulate_every: 1
   # EMA destroys performance when used with BatchNorm
   # replace BatchNorm with GroupNorm.
@@ -130,7 +132,7 @@ logging:
 checkpoint:
   topk:
     monitor_key: train_loss
-    mode: max
+    mode: min
     k: 5
     format_str: 'epoch={epoch:04d}-train_loss={train_loss:.3f}.ckpt'
   save_last_ckpt: True
