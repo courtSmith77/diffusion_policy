@@ -51,6 +51,7 @@ class ActionPredictor(Node):
         # Subscribers:
         self.scene_img_sub = self.create_subscription(Image, 'scene_image_obs', self.scene_image_callback, 10)
         self.desired_ee_sub = self.create_subscription(Pose, 'desired_ee_pose', self.desired_ee_callback, 10)
+        self.ee_img_sub = self.create_subscription(Image, 'ee_image_obs', self.ee_image_callback, 10)
 
         # Services
         self.start_inference_srv = self.create_service(Empty, 'start_inference', self.start_inference_srv_callback)
@@ -109,8 +110,8 @@ class ActionPredictor(Node):
         # track received messages
         self.reset_obs_received()
         self.at_least_one_of_each_obs_received = False
-        self.latest_message = [None, None]
-        self.obs_recieved = np.array([False, False])
+        self.latest_message = [None, None, None]
+        self.obs_recieved = np.array([False, False, False])
         self.observation_queue = []
         self.obs_data_mutex = threading.Lock()
 
@@ -133,18 +134,24 @@ class ActionPredictor(Node):
         self.get_logger().info(f'End Action Index = {self.action_end}')
 
     def reset_obs_received(self):
-        self.obs_recieved = np.array([False, False])
+        self.obs_recieved = np.array([False, False, False])
 
     def scene_image_callback(self, msg):
         img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         tp_img = np.transpose(img, (2,0,1))
         self.latest_message[0] = np.array(tp_img).astype(np.float32)
         self.obs_recieved[0] = True
+    
+    def ee_image_callback(self, msg):
+        img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        tp_img = np.transpose(img, (2,0,1))
+        self.latest_message[1] = np.array(tp_img).astype(np.float32)
+        self.obs_recieved[1] = True
 
     def desired_ee_callback(self, msg):
         self.get_logger().info('Received Desired EE Pose', once=True)
-        self.latest_message[1] = np.array([msg.position.x, msg.position.y]).astype(np.float32)
-        self.obs_recieved[1] = True
+        self.latest_message[2] = np.array([msg.position.x, msg.position.y]).astype(np.float32)
+        self.obs_recieved[2] = True
 
     def start_inference_srv_callback(self, request, response):
         self.get_logger().info('Inference Enabled')
@@ -179,17 +186,20 @@ class ActionPredictor(Node):
 
         with self.obs_data_mutex:
 
-            imgs = []
+            scene_imgs = []
+            ee_imgs = []
             agts = []
             for ii in np.arange(len(self.observation_queue)):
-                imgs.append(self.observation_queue[ii][0])
-                agts.append(self.observation_queue[ii][1])
+                scene_imgs.append(self.observation_queue[ii][0])
+                ee_imgs.append(self.observation_queue[ii][1])
+                agts.append(self.observation_queue[ii][2])
 
-            images = np.array(imgs)
+            scene_images = np.array(scene_imgs)
+            ee_images = np.array(ee_imgs)
             agent_pos = np.array(agts)
 
         obs_data_tensor = dict_apply(
-            {'img': images, 'agent_pos': agent_pos},
+            {'scene_img': scene_images, 'ee_img': ee_images, 'agent_pos': agent_pos},
             lambda x: torch.from_numpy(x).unsqueeze(0).to(self.device)
         )
 
