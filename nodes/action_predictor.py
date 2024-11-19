@@ -62,6 +62,7 @@ class ActionPredictor(Node):
 
         # Publishers
         self.predicted_action_pub = self.create_publisher(Float32MultiArray, 'predicted_action', 10)
+        self.action_horizon_pub = self.create_publisher(Float32MultiArray, 'action_horizon', 10)
         
         # Load checkpoint
         self.payload = torch.load(open(self.checkpoint_path, 'rb'), pickle_module=dill)
@@ -94,6 +95,7 @@ class ActionPredictor(Node):
 
         self.bridge = CvBridge()
 
+        self.get_logger().info(f'Policy # Actions Before = {self.policy.n_action_steps}')
         self.declare_parameter(
             'num_actions_taken',
             self.policy.n_action_steps,
@@ -102,9 +104,11 @@ class ActionPredictor(Node):
             )
         )
         self.num_actions_taken = self.get_parameter('num_actions_taken').get_parameter_value().integer_value
-        # self.policy.n_action_steps = self.policy.horizon - self.policy.n_obs_steps + 1
-        # if self.num_actions_taken > self.policy.n_action_steps:
-        #     self.num_actions_taken = self.policy.n_action_steps
+        if self.num_actions_taken > self.policy.n_action_steps:
+            self.num_actions_taken = self.policy.n_action_steps
+        if self.num_actions_taken < self.policy.n_action_steps:
+            self.policy.n_action_steps = self.num_actions_taken
+        self.get_logger().info(f'Policy # Actions After = {self.policy.n_action_steps}')
 
         # track received messages
         self.reset_obs_received()
@@ -124,7 +128,8 @@ class ActionPredictor(Node):
         self.send_full_action = True
 
         # model info
-        self.action_start = self.policy.n_obs_steps - 1
+        # self.action_start = self.policy.n_obs_steps - 1
+        self.action_start = self.policy.n_obs_steps
         self.action_end = self.action_start + self.policy.n_action_steps
         self.get_logger().info(f'Horizon = {self.policy.horizon}')
         self.get_logger().info(f'# Observations = {self.policy.n_obs_steps}')
@@ -198,6 +203,7 @@ class ActionPredictor(Node):
 
         with self.action_data_mutex:
             self.action_array = result['action'].squeeze(0).to('cpu').numpy()
+            self.action_pred = result['action_pred'].squeeze(0).to('cpu').numpy()
             self.send_full_action = True
 
         self.get_logger().info('Inference Complete.')
@@ -261,10 +267,20 @@ class ActionPredictor(Node):
                     self.predicted_action_pub.publish(actions_msg)
                     self.send_full_action = False
 
-                    # write full action horizon to csv
-                    # with open('./actions_horizon.csv', mode='a') as csv_file:
-                    #     csv_writer = csv.writer(csv_file)
-                    #     csv_writer.writerows(self.action_array)
+                    # make horizon message
+                    horizon_msg = Float32MultiArray()
+                    horizon_msg.data = self.action_pred.flatten().tolist()
+                    # add dimensions of flattened array
+                    horizon_msg.layout.dim.append(MultiArrayDimension())
+                    horizon_msg.layout.dim[0].label = "rows"
+                    horizon_msg.layout.dim[0].size = self.action_pred.shape[0]
+                    horizon_msg.layout.dim[0].stride = self.action_pred.shape[0] * self.action_pred.shape[1]
+                    horizon_msg.layout.dim.append(MultiArrayDimension())
+                    horizon_msg.layout.dim[1].label = "columns"
+                    horizon_msg.layout.dim[1].size = self.action_pred.shape[1]
+                    horizon_msg.layout.dim[1].stride = self.action_pred.shape[1]
+
+                    self.action_horizon_pub.publish(horizon_msg)
                 
                     self.get_logger().info('Sending new action array')
     
