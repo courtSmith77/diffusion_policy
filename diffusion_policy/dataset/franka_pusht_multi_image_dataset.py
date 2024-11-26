@@ -82,8 +82,10 @@ class FrankaPushTDataset(BaseImageDataset):
 
     def _sample_to_data(self, sample):
         # TODO: If add obs, grab from sample dictionary
-        scene_image = np.moveaxis(sample['scene_img'], -1, 1)/255
-        ee_image = np.moveaxis(sample['ee_img'], -1, 1)/255
+        # scene_image = np.moveaxis(sample['scene_img'], -1, 0)/255
+        # ee_image = np.moveaxis(sample['ee_img'], -1, 0)/255
+        scene_image = sample['scene_img']/255
+        ee_image = sample['ee_img']/255
         agent_pos = sample['agent_pos'].astype(np.float)
 
         # TODO: Add or remove observations

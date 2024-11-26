@@ -4,7 +4,7 @@ defaults:
 
 name: franka_pusht_multi_image
 
-dataset_path: ../data/converted_overfit_multi_img_10hz.zarr
+dataset_path: ../data/converted_orientation_70dems_10hz.zarr
 
 # Shapes must match the data conversion config file
 scene_image_shape: &scene_image_shape ${task.data_conversion.scene_image_shape}

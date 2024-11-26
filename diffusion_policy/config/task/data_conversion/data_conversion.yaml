@@ -2,6 +2,9 @@
 name: conversion_test
 
 data_dir: data/
-output_file: converted_overfit_multi_img_10hz
-scene_image_shape: [3, 70, 110]
-obs_image_shape: [3, 120, 212]
+# output_file: converted_overfit_multi_img_10hz
+# scene_image_shape: [3, 70, 110]
+# obs_image_shape: [3, 120, 212]
+output_file: converted_orientation_70dems_10hz
+scene_image_shape: [3, 125, 165]
+ee_image_shape: [3, 120, 212]

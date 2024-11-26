@@ -5,27 +5,21 @@ import dill
 import hydra
 import numpy as np
 import threading
-import yaml
-from enum import Enum, auto as enum_auto
+from enum import auto as enum_auto
 import time
-from collections import deque
 
 from diffusion_policy.workspace.base_workspace import BaseWorkspace
 from diffusion_policy.policy.base_image_policy import BaseImagePolicy
-from diffusion_policy.policy.diffusion_unet_image_policy import DiffusionUnetImagePolicy
 from diffusion_policy.common.pytorch_util import dict_apply
 
 import rclpy
 from rclpy.node import Node
-from rclpy.parameter import Parameter
 from rcl_interfaces.msg import ParameterDescriptor
 from geometry_msgs.msg import Pose
 from sensor_msgs.msg import Image
 from std_msgs.msg import Float32MultiArray, MultiArrayDimension
 from std_srvs.srv import Empty
 
-import cv2
-import csv
 from cv_bridge import CvBridge
 
 
@@ -54,10 +48,10 @@ class ActionPredictor(Node):
         self.ee_img_sub = self.create_subscription(Image, 'ee_image_obs', self.ee_image_callback, 10)
 
         # Services
-        self.start_inference_srv = self.create_service(Empty, 'start_inference', self.start_inference_srv_callback)
-        self.stop_inference_srv = self.create_service(Empty, 'stop_inference', self.stop_inference_srv_callback)
-        self.start_action_srv = self.create_service(Empty, 'start_action', self.start_action_srv_callback)
-        self.stop_action_srv = self.create_service(Empty, 'stop_action', self.stop_action_srv_callback)
+        self.enable_diffusion_srv = self.create_service(Empty, 'enable_diffusion', self.enable_diffusion_srv_callback)
+        self.disable_diffusion_srv = self.create_service(Empty, 'disable_diffusion', self.disable_diffusion_srv_callback)
+        self.start_diffusion_srv = self.create_service(Empty, 'start_diffusion', self.start_diffusion_srv_callback)
+        self.enable_diffusion = False
         self.enable_inference = False
         self.enable_action = False
 
@@ -120,7 +114,6 @@ class ActionPredictor(Node):
         self.obs_data_mutex = threading.Lock()
 
         # track inference
-        self.inference_counter = self.num_actions_taken
         self.inference_thread = threading.Thread()
 
         # track actions
@@ -142,14 +135,20 @@ class ActionPredictor(Node):
 
     def scene_image_callback(self, msg):
         img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        tp_img = np.transpose(img, (2,0,1))
-        self.latest_message[0] = np.array(tp_img).astype(np.float32)
+        # tp_img = np.transpose(img, (2,0,1))
+        # tp_img = np.moveaxis(img, -1, 1)
+        tp_img = np.moveaxis(img, -1, 0)
+        self.latest_message[0] = np.array(tp_img).astype(np.float32)/255.0
         self.obs_recieved[0] = True
     
     def ee_image_callback(self, msg):
-        img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        tp_img = np.transpose(img, (2,0,1))
-        self.latest_message[1] = np.array(tp_img).astype(np.float32)
+        img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8', )
+        self.get_logger().info(f'Image shape = {img.shape}')
+        # fake_img = np.transpose(img, (2,0,1))
+        # self.get_logger().info(f'Desired shape = {fake_img.shape}')
+        tp_img = np.moveaxis(img, -1, 0)
+        self.get_logger().info(f'Moved Axis shape = {tp_img.shape}')
+        self.latest_message[1] = np.array(tp_img).astype(np.float32)/255.0
         self.obs_recieved[1] = True
 
     def desired_ee_callback(self, msg):
@@ -163,21 +162,22 @@ class ActionPredictor(Node):
         self.inference_counter = self.num_actions_taken
         return response
     
-    def stop_inference_srv_callback(self, request, response):
-        self.get_logger().info('Inference Disabled')
+    def enable_diffusion_srv_callback(self, request, response):
+        self.get_logger().info('Diffusion Enabled')
+        self.enable_inference = True
+        self.enable_diffusion = True
+        return response
+    
+    def disable_diffusion_srv_callback(self, request, response):
+        self.get_logger().info('Diffusion Disabled')
         self.enable_inference = False
-        self.stop_action_srv_callback(None, None)
-        return response
-    
-    def start_action_srv_callback(self, request, response):
-        self.get_logger().info('Action Enabled')
-        if self.enable_inference:
-            self.enable_action = True
-        return response
-    
-    def stop_action_srv_callback(self, request, response):
-        self.get_logger().info('Action Disabled')
         self.enable_action = False
+        self.enable_diffusion = False
+        return response
+    
+    def start_diffusion_srv_callback(self, request, response):
+        self.get_logger().info('Diffusion Called')
+        self.enable_inference = True
         self.action_array = []
         self.send_full_action = True
         return response
@@ -217,7 +217,8 @@ class ActionPredictor(Node):
 
         self.get_logger().info('Inference Complete.')
         self.get_logger().info(f'Time: {time.time() - start} sec')
-
+        self.enable_inference = False
+        self.enable_action = True
 
     def timer_callback(self):
 
@@ -238,16 +239,13 @@ class ActionPredictor(Node):
             else:
                 self.observation_queue = self.observation_queue[1:] + [self.latest_message]
 
-        # check if begining inference
-        if not self.enable_inference:
+        if not self.enable_diffusion:
             return
         
-        self.inference_counter += 1
-
-        # only start new inference if the last inference has completed
-        if not self.inference_thread.is_alive():
-            if self.inference_counter > self.num_actions_taken:
-                self.inference_counter = 0
+        # check if begining inference
+        if self.enable_inference:
+            # only start new inference if the last inference has completed
+            if not self.inference_thread.is_alive():
                 self.inference_thread = threading.Thread(target=self.run_inference)
                 self.inference_thread.start()
         
@@ -292,7 +290,7 @@ class ActionPredictor(Node):
                     self.action_horizon_pub.publish(horizon_msg)
                 
                     self.get_logger().info('Sending new action array')
-    
+                    self.enable_action = False
     
 
 def main(args=None):
