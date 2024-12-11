@@ -1,5 +1,23 @@
 #!/usr/bin/env python3
 
+"""
+This node performs inference for a previously trained diffusion model. It 
+receives observation data from nodes in an additional package, and sends the 
+model output action sequences to nodes for execution on the Franka robot.
+
+PUBLISHERS:
+  + /predicted_action (Float32MultiArray) - The puptput actions to be executed on the franka
+  + /action_horizon (Float32MultiArray) - The full action horizon output from the  model
+SUBSCRIBERS:
+  + /scene_image_obs (Image) - The scene image observation
+  + /ee_image_obs (Image) - The end effector image observation
+  + /current_ee_pose (Pose) - The end effector position observation
+SERVICE:
+  + /start_diffusion (Empty) - Triggers the next diffusion inference after robot execution is complete.
+  + /enable_diffusion (Empty) - Triggers the starting of the diffusion inference loop.
+  + /disable_diffusion (Empty) - Triggers the stopping of the diffusion inference loop.
+"""
+
 import torch
 import dill
 import hydra
@@ -24,7 +42,7 @@ from cv_bridge import CvBridge
 
 
 class ActionPredictor(Node):
-    """ROS node for predicting franka actions using DIffusion Policy."""
+    """ROS node for predicting franka actions using Diffusion Policy."""
     def __init__(self):
         super().__init__('action_predictor')
 
@@ -44,7 +62,7 @@ class ActionPredictor(Node):
         
         # Subscribers:
         self.scene_img_sub = self.create_subscription(Image, 'scene_image_obs', self.scene_image_callback, 10)
-        self.desired_ee_sub = self.create_subscription(Pose, 'desired_ee_pose', self.desired_ee_callback, 10)
+        self.current_ee_sub = self.create_subscription(Pose, 'current_ee_pose', self.current_ee_callback, 10)
         self.ee_img_sub = self.create_subscription(Image, 'ee_image_obs', self.ee_image_callback, 10)
 
         # Services
@@ -77,9 +95,9 @@ class ActionPredictor(Node):
         self.declare_parameter('num_inference_steps', 100, ParameterDescriptor(description='Number of Inference Steps'))
         self.num_inference_steps = self.get_parameter('num_inference_steps').get_parameter_value().integer_value
 
-        self.get_logger().info(f'Policy Before = {self.policy.num_inference_steps}')
+        self.get_logger().info(f'Policy Inference Steps Before = {self.policy.num_inference_steps}')
         self.policy.num_inference_steps = self.num_inference_steps
-        self.get_logger().info(f'Policy After = {self.policy.num_inference_steps}')
+        self.get_logger().info(f'Policy Inference Steps After = {self.policy.num_inference_steps}')
 
         # Enable GPU if available
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -131,44 +149,38 @@ class ActionPredictor(Node):
         self.get_logger().info(f'End Action Index = {self.action_end}')
 
     def reset_obs_received(self):
+        """Resets the observations."""
         self.obs_recieved = np.array([False, False, False])
 
     def scene_image_callback(self, msg):
+        """Appends the most recent scene image received to the observation."""
         img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        # tp_img = np.transpose(img, (2,0,1))
-        # tp_img = np.moveaxis(img, -1, 1)
         tp_img = np.moveaxis(img, -1, 0)
         self.latest_message[0] = np.array(tp_img).astype(np.float32)/255.0
         self.obs_recieved[0] = True
     
     def ee_image_callback(self, msg):
+        """Appends the most recent end effector image received to the observation."""
         img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8', )
-        self.get_logger().info(f'Image shape = {img.shape}')
-        # fake_img = np.transpose(img, (2,0,1))
-        # self.get_logger().info(f'Desired shape = {fake_img.shape}')
         tp_img = np.moveaxis(img, -1, 0)
-        self.get_logger().info(f'Moved Axis shape = {tp_img.shape}')
         self.latest_message[1] = np.array(tp_img).astype(np.float32)/255.0
         self.obs_recieved[1] = True
 
-    def desired_ee_callback(self, msg):
-        self.get_logger().info('Received Desired EE Pose', once=True)
+    def current_ee_callback(self, msg):
+        """Appends the most recent end effector position received to the observation."""
+        self.get_logger().info('Received Current EE Pose', once=True)
         self.latest_message[2] = np.array([msg.position.x, msg.position.y]).astype(np.float32)
         self.obs_recieved[2] = True
-
-    def start_inference_srv_callback(self, request, response):
-        self.get_logger().info('Inference Enabled')
-        self.enable_inference = True
-        self.inference_counter = self.num_actions_taken
-        return response
     
     def enable_diffusion_srv_callback(self, request, response):
+        """Triggers the starting of the inference loop."""
         self.get_logger().info('Diffusion Enabled')
         self.enable_inference = True
         self.enable_diffusion = True
         return response
     
     def disable_diffusion_srv_callback(self, request, response):
+        """Triggers the stopping of the inference loop."""
         self.get_logger().info('Diffusion Disabled')
         self.enable_inference = False
         self.enable_action = False
@@ -176,6 +188,7 @@ class ActionPredictor(Node):
         return response
     
     def start_diffusion_srv_callback(self, request, response):
+        """Triggers the starting of an inference"""
         self.get_logger().info('Diffusion Called')
         self.enable_inference = True
         self.action_array = []
