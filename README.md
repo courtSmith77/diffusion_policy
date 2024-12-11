@@ -12,11 +12,13 @@ Node: This ROS package was modeled after the one developed by Nick Morales which
 
 ## Run Real Time Inference via ROS Node
 1. Build ROS workspace
-2. Run `ros2 run diffusion_policy action_predictor.py --ros-args -p checkpoint_path:={path_to_checkpoint} ${other_parameter_overrides} -p num_inference_steps:={number of inference steps} -p num_actions_taken:={number of action steps to take}`
+2. Run `ros2 run diffusion_policy action_predictor.py --ros-args -p checkpoint_path:={path_to_checkpoint}`
+
 All Parameter Overrides:
 - checkpoint_path: the path to the model checkpoint file to load the model for inference
 - num_inference_steps: the number of time steps the diffusion model uses for inference
 - num_actions_taken: the number of action steps taken within the action horizon
+
 3. Separately, follow the instructions in the FrankaDiffusionPolicy repository to execute the inference outputs both in simulation and real time.
 
 # Diffusion Policy
