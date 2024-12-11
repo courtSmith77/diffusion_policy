@@ -1,3 +1,24 @@
+# Diffusion Policy on the Franka Emika Panda 7 DOF arm
+This repository contains code for training and deploying a diffusion policy model for the Push T task on a Franka robot. It is based on the original repository [here](https://github.com/real-stanford/diffusion_policy). This repository is used in congruence with the [FrankaDiffusionPolicy](https://github.com/courtSmith77/FrankaDiffusionPolicy) in a ROS system to perform inference in real time on the Franka Robot.
+
+Check out the portfolio Post for this Project [here](https://courtsmith77.github.io/projects/07-diffusionpolicy).
+
+## Setup
+1. Clone the repository
+2. Setup a python virtual environment using the provided `env.bash` script
+3. Ensure proper installation with `pip install -e diffusion_policy/.`
+
+Node: This ROS package was modeled after the one developed by Nick Morales which can be found in [this](https://github.com/ngmor/diffusion_policy) project repository.
+
+## Run Real Time Inference via ROS Node
+1. Build ROS workspace
+2. Run `ros2 run diffusion_policy action_predictor.py --ros-args -p checkpoint_path:={path_to_checkpoint} ${other_parameter_overrides} -p num_inference_steps:={number of inference steps} -p num_actions_taken:={number of action steps to take}`
+All Parameter Overrides:
+- checkpoint_path: the path to the model checkpoint file to load the model for inference
+- num_inference_steps: the number of time steps the diffusion model uses for inference
+- num_actions_taken: the number of action steps taken within the action horizon
+3. Separately, follow the instructions in the FrankaDiffusionPolicy repository to execute the inference outputs both in simulation and real time.
+
 # Diffusion Policy
 
 [[Project page]](https://diffusion-policy.cs.columbia.edu/)
